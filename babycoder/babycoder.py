@@ -10,6 +10,10 @@ import platform
 
 from embeddings import Embeddings
 
+# Added imports for Llama
+import llama_cpp
+from llama_cpp import Llama
+
 # Set Variables
 load_dotenv()
 current_directory = os.getcwd()
@@ -26,11 +30,37 @@ openai.api_key = OPENAI_API_KEY
 OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", "gpt-3.5-turbo")
 assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from .env"
 
+# Added check for gpt-4 like babyagi
 if "gpt-4" in OPENAI_API_MODEL.lower():
     print(
         f"\033[91m\033[1m"
         + "\n*****USING GPT-4. POTENTIALLY EXPENSIVE. MONITOR YOUR COSTS*****"
         + "\033[0m\033[0m"
+    )
+
+# Added Llama model path and init model like babyagi  
+LLAMA_MODEL_PATH = os.getenv("LLAMA_MODEL_PATH", "models/llama-13B/ggml-model.bin")
+if OPENAI_API_MODEL.startswith("llama"):
+    CTX_MAX = 1024
+    LLAMA_THREADS_NUM = int(os.getenv("LLAMA_THREADS_NUM", 8))
+
+    print('Initialize model for evaluation')
+    llm = Llama(
+        model_path=LLAMA_MODEL_PATH,
+        n_ctx=CTX_MAX,
+        n_threads=LLAMA_THREADS_NUM,
+        n_batch=512,
+        use_mlock=False,
+    )
+
+    print('\nInitialize model for embedding')
+    llm_embed = Llama(
+        model_path=LLAMA_MODEL_PATH,
+        n_ctx=CTX_MAX,
+        n_threads=LLAMA_THREADS_NUM,
+        n_batch=512,
+        embedding=True,
+        use_mlock=False,
     )
 
 if len(sys.argv) > 1:
@@ -67,6 +97,16 @@ def openai_call(
     temperature: float = 0.5,
     max_tokens: int = 100,
 ):
+    if model.startswith("llama"):
+        result = llm(prompt[:CTX_MAX],  
+                     stop=["### Human"],
+                     echo=False,
+                     temperature=0.2,
+                     top_k=40,
+                     top_p=0.95,
+                     repeat_penalty=1.05,
+                     max_tokens=200)
+        return result['choices'][0]['text'].strip()
     global openai_calls_retried
     if not model.startswith("gpt-"):
         # Use completion API
